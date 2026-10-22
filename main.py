@@ -64,9 +64,9 @@ async def voice_agent_ws(websocket: WebSocket):
     handler = WsCallHandler(
         websocket,
         on_call_end=save_call,
-        prompt_type=qp.get("prompt_type", "inbound"),
+        prompt_type=qp.get("prompt_type", "outbound"),
         lead_name=qp.get("lead_name", "there"),
-        is_outbound=qp.get("is_outbound", "false").lower() == "true",
+        is_outbound=qp.get("is_outbound", "true").lower() == "true",
     )
     await handler.run()
 

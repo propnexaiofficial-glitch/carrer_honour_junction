@@ -35,19 +35,18 @@ import wave
 
 import websockets
 
-# ---------------------------------------------------------------
-# SERVER URL  (priority: command-line argument > env var > default)
-# Default is the Hostinger VPS (IP + port 8100, no SSL, test only).
-# Once DNS is ready, switch to: wss://voice.propnexai.com/ws/voice-agent
-# ---------------------------------------------------------------
-DEFAULT_URL = "ws://localhost:8000/ws/voice-agent"
+
+# DEFAULT_URL = "ws://localhost:8000/ws/voice-agent"
+
+# DEFAULT_URL = "ws://200.234.34.240:8102/ws/voice-agent"
+DEFAULT_URL = "wss://api.propnexai.com/honour-agent"
 
 if len(sys.argv) > 1:
     SERVER_URL = sys.argv[1]
 else:
     SERVER_URL = os.getenv("SERVER_URL", DEFAULT_URL)
 
-# --- Bonvoice's hard requirements ---
+
 SAMPLE_RATE = 8000          # Hz
 SAMPLE_WIDTH = 2            # bytes (16-bit)
 CHANNELS = 1                # mono

@@ -38,7 +38,7 @@ class StreamResampler:
         self.to_rate = to_rate
         self.width = width
         self.channels = channels
-        self._state = None  # persists across calls to feed()
+        self._state = None 
 
     def feed(self, pcm: bytes) -> bytes:
         if self.from_rate == self.to_rate:
