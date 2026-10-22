@@ -1,0 +1,7 @@
+.env
+__pycache__/
+*.pyc
+venv/
+.venv/
+transcripts/
+test_reply_output.wav
