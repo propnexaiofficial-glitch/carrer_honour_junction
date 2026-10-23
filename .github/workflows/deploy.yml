@@ -1,0 +1,27 @@
+name: Deploy Honour to Hostinger VPS
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          script: |
+            set -e
+            cd /root/honour_junction
+            git pull origin main
+            source venv/bin/activate
+            pip install -r requirements.txt
+            systemctl restart honour
+            sleep 5
+            systemctl is-active honour
+            curl -fsS http://127.0.0.1:8102/health
