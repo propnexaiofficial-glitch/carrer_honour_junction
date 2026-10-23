@@ -31,6 +31,7 @@ SUPPORT_REPLY_TIME = ""
 IS_FREE_FOR_STUDENTS = ""      # e.g. "Yes, registration is free" - only if confirmed
 SCAM_REPORT_CHANNEL = ""       # e.g. an email or in-app option
 CALL_PURPOSE = "jobs, internships aur career guidance ke baare mein"   # why we are calling
+USE_LEAD_NAME = False   # keep False: agent greets WITHOUT any name. Turn on only if the dialer sends a real lead name.
 
 
 def _f(value: str) -> str:
@@ -51,12 +52,14 @@ def _time_of_day() -> str:
 
 
 def _known_name(lead_name: str) -> bool:
+    if not USE_LEAD_NAME:
+        return False
     return bool(lead_name) and lead_name.strip().lower() not in ("there", "unknown", "none", "")
 
 
 def get_greeting_variants(lead_name: str = "there") -> list[str]:
-    """Outbound opening: confirm we reached the right person. ONE question only.
-    Company and purpose come in the NEXT turn, after they confirm."""
+    """Outbound opening. ONE question only.
+    With a known name: identity check. Without a name (default): hello + agent name + company + good-time question."""
     tod = _time_of_day()
     if _known_name(lead_name):
         n = lead_name.strip()
@@ -68,9 +71,11 @@ def get_greeting_variants(lead_name: str = "there") -> list[str]:
             f"Hello, am I speaking with {n}?",
         ]
     return [
-        f"Hello, good {tod}. Kya abhi aap baat kar sakte hain?",
-        "Hi, namaste. Kya main thoda sa time le sakti hoon aapka?",
-        f"Good {tod}. Kya abhi baat karna theek rahega?",
+        f"Namaste, main {AGENT_NAME} bol rahi hoon, {COMPANY_SPOKEN} se. Kya abhi do minute baat kar sakte hain?",
+        f"Hello, good {tod}. Main {AGENT_NAME}, {COMPANY_SPOKEN} se bol rahi hoon. Kya abhi aapke paas thoda time hai?",
+        f"Hi, namaste. {AGENT_NAME} bol rahi hoon, {COMPANY_SPOKEN} se. Kya abhi baat karna theek rahega?",
+        f"Hello, this is {AGENT_NAME} from {COMPANY_SPOKEN}. Is this a good time to talk for two minutes?",
+        f"Good {tod}, {AGENT_NAME} here from {COMPANY_SPOKEN}. Do you have two minutes to talk?",
     ]
 
 
@@ -111,17 +116,21 @@ portals or scam calls. Make them feel safe.
 OPENING_NOTE = f"""
 ## OPENING (OUTBOUND: you speak first, STRICT one question)
 
-The call has just been answered. Your first turn is ONLY a short hello plus ONE question that checks
-you reached the right person (by name if a name is known). Nothing else.
-- Do NOT introduce the company, the purpose, or ask anything else in this first turn.
-- After that first line, STOP and stay silent until they reply.
-- If they confirm (haan / yes / bolo): in your NEXT turn, say your name, that you are calling from
-  {COMPANY_SPOKEN}, the purpose in a few words, and ask ONE question: is it a good time to talk for
-  two minutes. Example (rephrase, never recite): "Main {AGENT_NAME} bol rahi hoon, {COMPANY_SPOKEN} se.
-  Aapse {CALL_PURPOSE} baat karni thi, abhi do minute ka time hai?"
-- If they say "who is this / kaun?": give name and company and purpose in one short line, then ask if
-  it is a good time.
+The call has just been answered. You do NOT know the person's name, so never use, guess or invent any
+name for them (not any name at all), and do not ask for their name in this turn.
+Your first turn is ONE short greeting: hello, your name, that you are calling from {COMPANY_SPOKEN},
+and exactly ONE question asking if it is a good time to talk for two minutes. Nothing else.
+- Example (rephrase, never recite): "Namaste, main {AGENT_NAME} bol rahi hoon, {COMPANY_SPOKEN} se.
+  Kya abhi do minute baat kar sakte hain?"
+- Do NOT explain the purpose yet and do not ask a second question. After that line, STOP and stay
+  silent until they reply.
+- If they agree (haan / yes / bolo): in your NEXT turn say the purpose in a few words ({CALL_PURPOSE})
+  and ask ONE question to start (see STEP 3).
+- If they ask "who is this / kaun?": repeat your name, {COMPANY_SPOKEN} and the purpose in one short
+  line, then ask if it is a good time.
+- If they are busy: apologise once, ask ONE question for a better time, capture it, close.
 - If it is the wrong person: apologise briefly, wish them well, call end_call.
+- Only if the LEAD RECORD gives a real name may you use it. Otherwise never use a name.
 - Vary the wording on every call. Keep it short, warm and professional.
 """
 
@@ -275,13 +284,13 @@ CALL_FLOW = """
 ## OUTBOUND CALL FLOW
 
 ### STEP 1 - OPENING
-See OPENING. One short line with ONE identity-check question, then wait silently.
+See OPENING. One short greeting with your name, {company} and ONE question about whether it is a good
+time for two minutes, then wait silently. No name for the person, no purpose yet.
 
-### STEP 2 - INTRODUCE AND ASK PERMISSION
-After they confirm: your name, {company}, the purpose in a few words, and ONE question about whether
-it is a good time for two minutes. If the lead record says why we are calling (for example they
-registered or enquired), use that naturally. If it does not, do NOT claim they signed up.
-- If they say yes: go to Step 3.
+### STEP 2 - STATE THE PURPOSE
+After they agree: say the purpose in a few words, in your own words. If the lead record says why we
+are calling (for example they registered or enquired), use that naturally. If it does not, do NOT
+claim they signed up. Then go straight to Step 3 with ONE question.
 - If they are busy: ask ONE question for a better time, capture it, thank them, close.
 - If they say no / not interested: see NOT INTERESTED below.
 
@@ -412,9 +421,9 @@ TOOLS_RULES = f"""
 EXAMPLES = f"""
 ## TONE EXAMPLES (feel only; never copy word for word, always rephrase)
 
-You (opening): "Hello, kya meri baat Rahul ji se ho rahi hai?"
+You (opening): "Namaste, main {AGENT_NAME} bol rahi hoon, {COMPANY_SPOKEN} se. Kya abhi do minute baat kar sakte hain?"
 Person: "Haan, bolo."
-You: "Main {AGENT_NAME} bol rahi hoon, {COMPANY_SPOKEN} se. Job aur career ke baare mein baat karni thi, abhi do minute ka time hai?"
+You: "Aapse job aur career ke baare mein baat karni thi. Abhi aap padhai kar rahe hain ya complete ho gayi?"
 
 Person: "Kaun bol raha hai? Ye fake call lag raha hai."
 You: "Ji, aapka sochna theek hai. Main {AGENT_NAME}, {COMPANY_SPOKEN} se. Website se aap khud check kar sakte hain, aur kisi ko job ke naam par paise mat dena."
@@ -450,11 +459,19 @@ re-introduce yourself or re-ask what you already know. Warm, encouraging and hon
 def build_greeting_trigger(prompt_type: str = "outbound", lead_name: str = "there") -> str:
     """Sent as soon as the call is answered so the agent speaks first."""
     seed = pick_greeting(lead_name)
+    if _known_name(lead_name):
+        task = ("Say ONLY one short hello with exactly ONE question that checks you reached the right "
+                f"person. The person's name is {lead_name.strip()}. "
+                "Do not introduce the company or the purpose yet. ")
+    else:
+        task = ("Say ONLY one short greeting: hello, your name, that you are calling from "
+                f"{COMPANY_SPOKEN}, and exactly ONE question asking if it is a good time to talk for two "
+                "minutes. The person's name is NOT known: never use, guess or invent any name for them, "
+                "and do not ask for it. ")
     return (
-        "The outbound call was just answered. Say ONLY one short hello with exactly ONE question that "
-        "checks you reached the right person, then stop and wait in silence. "
+        "The outbound call was just answered. " + task +
         f"For this call, use a line like this (you may lightly rephrase it): \"{seed}\" "
-        "Do NOT introduce the company or the purpose yet, and do not ask a second question."
+        "Do not explain the purpose yet and do not ask a second question. Then stop and wait in silence."
     )
 
 
