@@ -15,7 +15,7 @@ from prompts import build_greeting_trigger
 
 logger = logging.getLogger(__name__)
 
-CHUNK_BYTES = 320            # 20 ms of 8 kHz PCM16
+CHUNK_BYTES = 320          
 BYTES_PER_MS = 16.0
 LOOKAHEAD_S = 0.2            # keep ~200 ms of audio buffered at Bonvoice
 SILENCE_TIMEOUT_S = 20       # no caller speech and no agent audio for this long -> hang up
@@ -56,7 +56,11 @@ class WsCallHandler:
         self._sender_task: Optional[asyncio.Task] = None
         self._silence_task: Optional[asyncio.Task] = None
 
-    # ── small helpers ────────────────────────────────────────────────────────
+        # diagnostic counters 
+        self._rx_media = 0
+        self._tx_chunks = 0
+
+    
     def _connected(self) -> bool:
         return self.ws.client_state == WebSocketState.CONNECTED
 
@@ -93,6 +97,7 @@ class WsCallHandler:
         return max(0.0, self._play_start + self._play_ms / 1000.0 - time.monotonic())
 
     async def _hang_up(self):
+        logger.info(f"[{self.call_id}] Server is hanging up (sending stop).")
         await self._send_json({"event": "stop", "call_id": self.call_id})
         try:
             if self._connected():
@@ -100,24 +105,36 @@ class WsCallHandler:
         except Exception:
             pass
 
-    # ── main loop: Bonvoice -> Gemini ────────────────────────────────────────
+    
     async def run(self):
         try:
             while True:
                 try:
                     raw = await self.ws.receive_text()
-                except (WebSocketDisconnect, RuntimeError):
-                    logger.info(f"[{self.call_id}] WebSocket closed.")
+                except (WebSocketDisconnect, RuntimeError) as e:
+                    logger.info(f"[{self.call_id}] WebSocket closed by remote "
+                                f"({type(e).__name__}, code={getattr(e, 'code', None)}).")
                     break
                 try:
                     msg = json.loads(raw)
                 except json.JSONDecodeError:
+                    logger.warning(f"[{self.call_id}] RX non-JSON message: {raw[:120]!r}")
                     continue
 
                 event = msg.get("event")
+                if event != "media":
+                    # every non-audio message from Bonvoice, truncated (shows real field names)
+                    logger.info(f"[{self.call_id}] RX event={event!r} raw={raw[:400]}")
+
                 if event == "start":
                     await self._handle_start(msg)
                 elif event == "media":
+                    self._rx_media += 1
+                    if self._rx_media == 1:
+                        logger.info(f"[{self.call_id}] RX first media packet, keys="
+                                    f"{list((msg.get('media') or {}).keys())}, started={self._started}")
+                    elif self._rx_media % 250 == 0:
+                        logger.info(f"[{self.call_id}] RX media packets so far: {self._rx_media}")
                     if not (self._started and self.bridge):
                         continue
                     payload = (msg.get("media") or {}).get("payload", "")
@@ -151,6 +168,10 @@ class WsCallHandler:
         self._prompt_type = msg.get("prompt_type") or self._prompt_type
         self._started_at = datetime.now(timezone.utc)
 
+        if not self._stream_id:
+            logger.warning(f"[{self.call_id}] start event has NO data.stream_id; "
+                           f"agent audio will be sent with an empty stream_id.")
+
         self.bridge = GeminiBridge(self.call_id, prompt_type=self._prompt_type, telephony=True)
         await self.bridge.start(greeting=build_greeting_trigger(self._prompt_type, self._lead_name))
 
@@ -158,15 +179,16 @@ class WsCallHandler:
         self._sender_task = asyncio.create_task(self._audio_sender())
         self._silence_task = asyncio.create_task(self._silence_watcher())
         logger.info(f"[{self.call_id}] Call started (prompt_type={self._prompt_type}, "
-                    f"caller={self._caller_number or 'unknown'}).")
+                    f"caller={self._caller_number or 'unknown'}, stream_id={self._stream_id!r}).")
 
-    # ── Gemini -> Bonvoice ───────────────────────────────────────────────────
+    
     async def _audio_sender(self):
         b = self.bridge
         try:
             while True:
                 if b._interrupted_flag:
                     b._interrupted_flag = False
+                    logger.info(f"[{self.call_id}] Sending 'clear' (barge-in) to Bonvoice.")
                     await self._send_json({"event": "clear", "stream_id": self._stream_id})
                     self._reset_playback()
 
@@ -219,6 +241,12 @@ class WsCallHandler:
                 except (WebSocketDisconnect, RuntimeError):
                     break
                 self._last_chunk_at = time.monotonic()
+                self._tx_chunks += 1
+                if self._tx_chunks == 1:
+                    since_start = (datetime.now(timezone.utc) - self._started_at).total_seconds() \
+                        if self._started_at else -1
+                    logger.info(f"[{self.call_id}] TX first agent audio to Bonvoice: {len(chunk)} bytes "
+                                f"({since_start:.1f}s after start, stream_id={self._stream_id!r}).")
         except asyncio.CancelledError:
             pass
         except Exception:
@@ -248,6 +276,10 @@ class WsCallHandler:
                     await task
                 except (asyncio.CancelledError, Exception):
                     pass
+
+        logger.info(f"[{self.call_id}] SUMMARY rx_media_packets={self._rx_media} "
+                    f"tx_agent_chunks={self._tx_chunks} tx_packets={self._packet_id} "
+                    f"stream_id={self._stream_id!r}")
 
         record = {
             "call_id": self.call_id,
